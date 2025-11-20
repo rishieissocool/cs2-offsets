@@ -716,9 +716,9 @@
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>👥 User Management</h2>
                     <div style="display: flex; gap: 10px;">
-                        <button class="btn btn-primary" onclick="exportUserData()" style="padding: 10px 20px; font-size: 14px;">📥 Export SQL</button>
+                        <button class="btn btn-primary" onclick="window.exportUserData()" style="padding: 10px 20px; font-size: 14px;">📥 Export SQL</button>
                         <button class="btn btn-primary" onclick="document.getElementById('importFileInput').click()" style="padding: 10px 20px; font-size: 14px;">📤 Import SQL</button>
-                        <input type="file" id="importFileInput" accept=".sql" style="display: none;" onchange="importUserData(event)">
+                        <input type="file" id="importFileInput" accept=".sql" style="display: none;" onchange="window.importUserData(event)">
                     </div>
                 </div>
                 
@@ -832,8 +832,8 @@
             </div>
 
             <!-- Tier Edit Modal -->
-            <div id="tierEditModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10001; align-items: center; justify-content: center;">
-                <div style="background: white; border-radius: 12px; padding: 30px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto;">
+            <div id="tierEditModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10001; align-items: center; justify-content: center;" onclick="if(event.target === this) window.closeTierEditModal();">
+                <div onclick="event.stopPropagation();" style="background: white; border-radius: 12px; padding: 30px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto;">
                     <h2 style="margin-bottom: 20px;">Edit User Tier</h2>
                     <div class="form-group">
                         <label for="editTier">Tier</label>
@@ -859,8 +859,8 @@
                         </div>
                     </div>
                     <div style="display: flex; gap: 10px; margin-top: 25px;">
-                        <button onclick="saveTierEdit()" class="btn btn-primary" style="flex: 1;">Save</button>
-                        <button onclick="closeTierEditModal()" class="btn" style="flex: 1; background: #95a5a6; color: white;">Cancel</button>
+                        <button onclick="window.saveTierEdit()" class="btn btn-primary" style="flex: 1;">Save</button>
+                        <button onclick="window.closeTierEditModal()" class="btn" style="flex: 1; background: #95a5a6; color: white;">Cancel</button>
                     </div>
                 </div>
             </div>
@@ -1759,6 +1759,7 @@
                 }
                 
                 xhr.onload = function() {
+                    const isBlob = xhr.responseType === 'blob';
                     const response = {
                         ok: xhr.status >= 200 && xhr.status < 300,
                         status: xhr.status,
@@ -1769,16 +1770,28 @@
                             }
                         },
                         json: async function() {
+                            if (isBlob) {
+                                throw new Error('Cannot parse blob as JSON');
+                            }
                             return JSON.parse(xhr.responseText);
                         },
                         text: async function() {
+                            if (isBlob) {
+                                // For blob, we need to read it as text
+                                return new Promise((resolve, reject) => {
+                                    const reader = new FileReader();
+                                    reader.onload = () => resolve(reader.result);
+                                    reader.onerror = () => reject(new Error('Failed to read blob as text'));
+                                    reader.readAsText(xhr.response);
+                                });
+                            }
                             return xhr.responseText;
                         },
                         blob: async function() {
-                            if (xhr.responseType === 'blob') {
+                            if (isBlob) {
                                 return xhr.response;
                             }
-                            return new Blob([xhr.response], { type: xhr.getResponseHeader('Content-Type') || 'application/octet-stream' });
+                            return new Blob([xhr.responseText], { type: xhr.getResponseHeader('Content-Type') || 'application/octet-stream' });
                         }
                     };
                     resolve(response);
@@ -2147,7 +2160,7 @@
                         <td>${lastLogin}</td>
                         <td onclick="event.stopPropagation();">
                             <button data-google-id="${user.googleId}" class="btn manage-user-btn" style="background: #667eea; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; margin-right: 5px;">Manage</button>
-                            <button data-google-id="${user.googleId}" onclick="event.stopPropagation(); openTierEditModal('${user.googleId}', '${userTier}')" class="btn" style="background: #27ae60; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Edit Tier</button>
+                            <button data-google-id="${user.googleId}" onclick="event.stopPropagation(); window.openTierEditModal('${user.googleId}', '${userTier}')" class="btn" style="background: #27ae60; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Edit Tier</button>
                         </td>
                     </tr>
                 `;
@@ -3341,11 +3354,19 @@
         // Tier editing functions
         let currentEditingUserId = null;
 
-        function openTierEditModal(googleId, currentTier) {
+        // Make functions globally accessible
+        window.openTierEditModal = function(googleId, currentTier) {
+            console.log('[ADMIN] Opening tier edit modal for:', googleId, 'current tier:', currentTier);
             currentEditingUserId = googleId;
             const modal = document.getElementById('tierEditModal');
             const tierSelect = document.getElementById('editTier');
             const durationFields = document.getElementById('durationFields');
+            
+            if (!modal || !tierSelect || !durationFields) {
+                console.error('[ADMIN] Modal elements not found');
+                alert('Error: Modal elements not found');
+                return;
+            }
             
             tierSelect.value = currentTier || 'regular';
             durationFields.style.display = tierSelect.value === 'regular' ? 'none' : 'block';
@@ -3357,15 +3378,17 @@
             tierSelect.onchange = function() {
                 durationFields.style.display = this.value === 'regular' ? 'none' : 'block';
             };
-        }
+        };
 
-        function closeTierEditModal() {
+        window.closeTierEditModal = function() {
             const modal = document.getElementById('tierEditModal');
-            modal.style.display = 'none';
+            if (modal) {
+                modal.style.display = 'none';
+            }
             currentEditingUserId = null;
-        }
+        };
 
-        async function saveTierEdit() {
+        window.saveTierEdit = async function() {
             if (!currentEditingUserId) {
                 alert('No user selected');
                 return;
@@ -3387,8 +3410,10 @@
                     requestBody.durationUnit = durationUnit;
                 }
 
+                console.log('[ADMIN] Updating tier for user:', currentEditingUserId, requestBody);
+
                 const response = await makeAuthRequest(`${API_BASE}/users/${currentEditingUserId}/tier`, {
-                    method: 'POST',
+                    method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json',
                     },
@@ -3396,38 +3421,51 @@
                 });
 
                 const data = await response.json();
+                console.log('[ADMIN] Tier update response:', data);
 
                 if (response.ok && data.success) {
                     alert('User tier updated successfully!');
-                    closeTierEditModal();
+                    window.closeTierEditModal();
                     loadUsers(); // Refresh user list
                 } else {
                     alert('Error: ' + (data.error || 'Failed to update tier'));
                 }
             } catch (error) {
-                console.error('Error updating tier:', error);
+                console.error('[ADMIN] Error updating tier:', error);
                 alert('Error: ' + error.message);
             }
-        }
+        };
 
         // Export user data
-        async function exportUserData() {
+        window.exportUserData = async function() {
+            console.log('[ADMIN] Exporting user data...');
             try {
                 const response = await makeAuthRequest(`${API_BASE}/users/export`, {
                     method: 'GET',
                     responseType: 'blob',
                 });
 
+                console.log('[ADMIN] Export response status:', response.status, response.ok);
+
                 if (response.ok) {
                     const blob = await response.blob();
+                    console.log('[ADMIN] Blob received, size:', blob.size);
+                    
+                    if (blob.size === 0) {
+                        alert('Error: Received empty file');
+                        return;
+                    }
+                    
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
                     a.download = `richieslab_users_export_${new Date().toISOString().split('T')[0]}.sql`;
                     document.body.appendChild(a);
                     a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
+                    setTimeout(() => {
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                    }, 100);
                     alert('User data exported successfully!');
                 } else {
                     const text = await response.text();
@@ -3437,16 +3475,17 @@
                     } catch {
                         errorData = { error: text || 'Unknown error' };
                     }
+                    console.error('[ADMIN] Export error:', errorData);
                     alert('Error: ' + (errorData.error || 'Failed to export data'));
                 }
             } catch (error) {
-                console.error('Error exporting data:', error);
+                console.error('[ADMIN] Error exporting data:', error);
                 alert('Error: ' + error.message);
             }
-        }
+        };
 
         // Import user data
-        async function importUserData(event) {
+        window.importUserData = async function(event) {
             const file = event.target.files[0];
             if (!file) {
                 return;
@@ -3457,11 +3496,15 @@
                 return;
             }
 
+            console.log('[ADMIN] Importing user data from file:', file.name);
+
             try {
                 const reader = new FileReader();
                 reader.onload = async function(e) {
                     try {
                         const sqlContent = e.target.result;
+                        console.log('[ADMIN] SQL content length:', sqlContent.length);
+                        
                         const response = await makeAuthRequest(`${API_BASE}/users/import`, {
                             method: 'POST',
                             headers: {
@@ -3471,6 +3514,7 @@
                         });
 
                         const data = await response.json();
+                        console.log('[ADMIN] Import response:', data);
 
                         if (response.ok && data.success) {
                             alert('User data imported successfully!');
@@ -3479,17 +3523,21 @@
                             alert('Error: ' + (data.error || 'Failed to import data'));
                         }
                     } catch (error) {
-                        console.error('Error importing data:', error);
+                        console.error('[ADMIN] Error importing data:', error);
                         alert('Error: ' + error.message);
                     }
+                };
+                reader.onerror = function(error) {
+                    console.error('[ADMIN] FileReader error:', error);
+                    alert('Error reading file');
                 };
                 reader.readAsText(file);
                 event.target.value = ''; // Reset file input
             } catch (error) {
-                console.error('Error reading file:', error);
+                console.error('[ADMIN] Error reading file:', error);
                 alert('Error reading file: ' + error.message);
             }
-        }
+        };
     </script>
 </body>
 </html>
