@@ -716,9 +716,9 @@
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>👥 User Management</h2>
                     <div style="display: flex; gap: 10px;">
-                        <button class="btn btn-primary" onclick="window.exportUserData()" style="padding: 10px 20px; font-size: 14px;">📥 Export SQL</button>
-                        <button class="btn btn-primary" onclick="document.getElementById('importFileInput').click()" style="padding: 10px 20px; font-size: 14px;">📤 Import SQL</button>
-                        <input type="file" id="importFileInput" accept=".sql" style="display: none;" onchange="window.importUserData(event)">
+                        <button id="exportUserDataBtn" class="btn btn-primary" style="padding: 10px 20px; font-size: 14px;">📥 Export SQL</button>
+                        <button id="importUserDataBtn" class="btn btn-primary" style="padding: 10px 20px; font-size: 14px;">📤 Import SQL</button>
+                        <input type="file" id="importFileInput" accept=".sql" style="display: none;">
                     </div>
                 </div>
                 
@@ -2131,7 +2131,7 @@
                 return;
             }
 
-            tbody.innerHTML = users.map(user => {
+            const html = users.map(user => {
                 const lastLogin = user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never';
                 const roleBadge = user.role === 'admin' ? '<span style="background: #e74c3c; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Admin</span>' :
                                user.role === 'moderator' ? '<span style="background: #f39c12; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Mod</span>' :
@@ -2149,8 +2149,12 @@
                 };
                 const tierBadge = `<span style="background: ${tierColors[userTier] || '#95a5a6'}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em; text-transform: capitalize;">${userTier}</span>`;
                 
+                // Escape quotes in user data to prevent XSS and syntax errors
+                const safeGoogleId = (user.googleId || '').replace(/'/g, "\\'");
+                const safeTier = userTier.replace(/'/g, "\\'");
+                
                 return `
-                    <tr style="cursor: pointer;" onclick="openUserManagement('${user.googleId}')" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''">
+                    <tr style="cursor: pointer;" onclick="openUserManagement('${safeGoogleId}')" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''">
                         <td>${user.name || 'N/A'}</td>
                         <td>${user.email}</td>
                         <td>${roleBadge}</td>
@@ -2159,12 +2163,33 @@
                         <td>${user.stats?.loginCount || 0}</td>
                         <td>${lastLogin}</td>
                         <td onclick="event.stopPropagation();">
-                            <button data-google-id="${user.googleId}" class="btn manage-user-btn" style="background: #667eea; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; margin-right: 5px;">Manage</button>
-                            <button data-google-id="${user.googleId}" onclick="event.stopPropagation(); window.openTierEditModal('${user.googleId}', '${userTier}')" class="btn" style="background: #27ae60; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Edit Tier</button>
+                            <button data-google-id="${safeGoogleId}" data-user-tier="${safeTier}" class="btn manage-user-btn" style="background: #667eea; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; margin-right: 5px;">Manage</button>
+                            <button data-google-id="${safeGoogleId}" data-user-tier="${safeTier}" class="btn edit-tier-btn" style="background: #27ae60; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Edit Tier</button>
                         </td>
                     </tr>
                 `;
             }).join('');
+            
+            tbody.innerHTML = html;
+            
+            // Attach event listeners to Edit Tier buttons after HTML is set
+            setTimeout(() => {
+                tbody.querySelectorAll('.edit-tier-btn').forEach(btn => {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const googleId = this.getAttribute('data-google-id');
+                        const userTier = this.getAttribute('data-user-tier');
+                        console.log('[ADMIN] Edit Tier button clicked:', googleId, userTier);
+                        if (window.openTierEditModal) {
+                            window.openTierEditModal(googleId, userTier);
+                        } else {
+                            console.error('[ADMIN] openTierEditModal function not found');
+                            alert('Error: Edit tier function not available. Please refresh the page.');
+                        }
+                    });
+                });
+            }, 0);
         }
 
         // Update pagination controls
@@ -2289,6 +2314,49 @@
                     if (currentUserPage < totalPages) {
                         currentUserPage++;
                         applyUserFilters();
+                    }
+                });
+            }
+            
+            // Export button
+            const exportBtn = document.getElementById('exportUserDataBtn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('[ADMIN] Export button clicked');
+                    if (window.exportUserData) {
+                        window.exportUserData();
+                    } else {
+                        console.error('[ADMIN] exportUserData function not found');
+                        alert('Error: Export function not available. Please refresh the page.');
+                    }
+                });
+            }
+            
+            // Import button
+            const importBtn = document.getElementById('importUserDataBtn');
+            if (importBtn) {
+                importBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const importInput = document.getElementById('importFileInput');
+                    if (importInput) {
+                        importInput.click();
+                    }
+                });
+            }
+            
+            // Import file input
+            const importInput = document.getElementById('importFileInput');
+            if (importInput) {
+                importInput.addEventListener('change', (e) => {
+                    console.log('[ADMIN] Import file selected');
+                    if (window.importUserData) {
+                        window.importUserData(e);
+                    } else {
+                        console.error('[ADMIN] importUserData function not found');
+                        alert('Error: Import function not available. Please refresh the page.');
                     }
                 });
             }
@@ -3351,10 +3419,10 @@
             }
         }, 30000);
 
-        // Tier editing functions
+        // Tier editing functions - Define early so they're available
         let currentEditingUserId = null;
 
-        // Make functions globally accessible
+        // Make functions globally accessible - Define immediately
         window.openTierEditModal = function(googleId, currentTier) {
             console.log('[ADMIN] Opening tier edit modal for:', googleId, 'current tier:', currentTier);
             currentEditingUserId = googleId;
