@@ -859,8 +859,8 @@
                         </div>
                     </div>
                     <div style="display: flex; gap: 10px; margin-top: 25px;">
-                        <button onclick="window.saveTierEdit()" class="btn btn-primary" style="flex: 1;">Save</button>
-                        <button onclick="window.closeTierEditModal()" class="btn" style="flex: 1; background: #95a5a6; color: white;">Cancel</button>
+                        <button id="saveTierEditBtn" class="btn btn-primary" style="flex: 1;">Save</button>
+                        <button id="cancelTierEditBtn" class="btn" style="flex: 1; background: #95a5a6; color: white;">Cancel</button>
                     </div>
                 </div>
             </div>
@@ -2360,6 +2360,37 @@
                     }
                 });
             }
+            
+            // Tier Edit Modal buttons
+            const saveTierBtn = document.getElementById('saveTierEditBtn');
+            if (saveTierBtn) {
+                saveTierBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('[ADMIN] Save tier button clicked');
+                    if (window.saveTierEdit) {
+                        window.saveTierEdit();
+                    } else {
+                        console.error('[ADMIN] saveTierEdit function not found');
+                        alert('Error: Save function not available. Please refresh the page.');
+                    }
+                });
+            }
+            
+            const cancelTierBtn = document.getElementById('cancelTierEditBtn');
+            if (cancelTierBtn) {
+                cancelTierBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('[ADMIN] Cancel tier button clicked');
+                    if (window.closeTierEditModal) {
+                        window.closeTierEditModal();
+                    } else {
+                        console.error('[ADMIN] closeTierEditModal function not found');
+                        alert('Error: Cancel function not available. Please refresh the page.');
+                    }
+                });
+            }
         });
 
         async function updateUserRole(googleId, role) {
@@ -3471,6 +3502,13 @@
                 return;
             }
 
+            // Disable save button to prevent double-clicks
+            const saveBtn = document.getElementById('saveTierEditBtn');
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving...';
+            }
+
             try {
                 const requestBody = { tier };
                 if (tier !== 'regular') {
@@ -3479,8 +3517,9 @@
                 }
 
                 console.log('[ADMIN] Updating tier for user:', currentEditingUserId, requestBody);
+                console.log('[ADMIN] API endpoint:', `${API_BASE}/users/${currentEditingUserId}/tier`);
 
-                const response = await makeAuthRequest(`${API_BASE}/users/${currentEditingUserId}/tier`, {
+                const response = await makeAuthRequest(`${API_BASE}/users/${encodeURIComponent(currentEditingUserId)}/tier`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json',
@@ -3488,19 +3527,30 @@
                     body: JSON.stringify(requestBody),
                 });
 
+                console.log('[ADMIN] Tier update response status:', response.status);
+
                 const data = await response.json();
-                console.log('[ADMIN] Tier update response:', data);
+                console.log('[ADMIN] Tier update response data:', data);
 
                 if (response.ok && data.success) {
                     alert('User tier updated successfully!');
                     window.closeTierEditModal();
                     loadUsers(); // Refresh user list
                 } else {
-                    alert('Error: ' + (data.error || 'Failed to update tier'));
+                    const errorMsg = data.error || data.message || 'Failed to update tier';
+                    console.error('[ADMIN] Tier update failed:', errorMsg);
+                    alert('Error: ' + errorMsg);
                 }
             } catch (error) {
                 console.error('[ADMIN] Error updating tier:', error);
-                alert('Error: ' + error.message);
+                console.error('[ADMIN] Error stack:', error.stack);
+                alert('Error: ' + (error.message || 'Failed to update tier. Please check the console for details.'));
+            } finally {
+                // Re-enable save button
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save';
+                }
             }
         };
 
