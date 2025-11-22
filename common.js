@@ -1319,6 +1319,9 @@
             
             document.getElementById('showdownOutput').value = set;
         }
+        
+        // Make generateShowdownSet globally accessible for inline HTML handlers
+        window.generateShowdownSet = generateShowdownSet;
 
         // Tab switching
         function switchDesignerTab(tabName) {
