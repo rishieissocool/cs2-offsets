@@ -1432,6 +1432,9 @@
             const alphaCheck = document.getElementById('alphaCheck');
             if (alphaCheck) {
                 alphaCheck.addEventListener('change', () => {
+                    if (pokeDesignerData.selectedPokemon) {
+                        updatePokemonImage(pokeDesignerData.selectedPokemon);
+                    }
                     generateShowdownSet();
                 });
             }
